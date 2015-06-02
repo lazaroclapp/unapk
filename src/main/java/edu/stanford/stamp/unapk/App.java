@@ -7,10 +7,12 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 import net.dongliu.apk.parser.ApkParser;
+import net.dongliu.apk.parser.exception.ParserException;
 
 /**
  * Quick tool to decompress an apk file, using https://github.com/xiaxiaocao/apk-parser
@@ -60,10 +62,27 @@ public class App
         	ApkParser parser = new ApkParser(apkfilepath);
         	parser.setPreferredLocale(java.util.Locale.getDefault());
         	
+        	ARSCFileParser arscParser = new ARSCFileParser();
+        	arscParser.parse(apkfilepath);
+        	Map<Integer, String> spool = arscParser.getGlobalStringPool();
+        	/*for (Map.Entry<Integer, String> entry : spool.entrySet()) {
+        		System.out.println(entry.getValue());
+        	}
+        	for(String name : arscParser.getPackageNames()) {
+        		System.out.println(name);
+        	}*/
+        	
+        	
         	// Extract AndroidManifest.xml
         	String manifestXml = parser.getManifestXml();
         	fos = new FileOutputStream(new File(outdirpath, "AndroidManifest.xml"));
         	(new PrintStream(fos)).print(manifestXml);
+        	
+        	// Generate public.xml and strings.xml
+        	File resValues = new File(new File(outdirpath, "res"), "values");
+        	File publicXMLFile = new File(resValues,"public.xml");
+        	resValues.mkdirs();
+        	arscParser.writePublicXML(publicXMLFile);
         	
         	zis = new ZipInputStream(new FileInputStream(apkfilepath));
 			ZipEntry ze = zis.getNextEntry();
@@ -72,7 +91,7 @@ public class App
 				String fileName = ze.getName();
 				File newFile = new File(outdirpath, fileName);
 	 
-				System.out.println("Extracting: "+ newFile.getAbsoluteFile());
+				//System.out.println("Extracting: "+ newFile.getAbsoluteFile());
 	 
 				//create all non exists folders
 				//else you will hit FileNotFoundException for compressed folder
@@ -84,8 +103,13 @@ public class App
 		        		handledByAPKParser = true;
 					} else if(fileName.startsWith("res")) {
 						fos = new FileOutputStream(newFile);
-						String resFile = parser.transBinaryXml(fileName);
-						(new PrintStream(fos)).print(resFile);
+						try {
+							String resFile = parser.transBinaryXml(fileName);
+							(new PrintStream(fos)).print(resFile);
+						} catch (ParserException e) {
+							System.out.println("WARNING: Apkparser while extracting file " + fileName + " (" + e.toString() +")");
+							e.printStackTrace();
+						}
 						handledByAPKParser = true;
 					}
 				}
